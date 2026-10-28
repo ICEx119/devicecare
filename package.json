@@ -1,0 +1,14 @@
+{
+  "name": "devicecare",
+  "version": "1.0.0",
+  "description": "DeviceCare: ระบบยืดอายุอุปกรณ์ไอทีของนักศึกษา (SDG 12)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server.js",
+    "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

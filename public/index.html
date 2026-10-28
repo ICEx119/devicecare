@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeviceCare — ยืดอายุอุปกรณ์ไอทีของนักศึกษา</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💻</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#dashboard">
+        <span class="brand-mark">♻</span>
+        <span>
+          <strong>DeviceCare</strong>
+          <small>ยืดอายุอุปกรณ์ไอที · SDG 12</small>
+        </span>
+      </a>
+      <div class="user-menu" id="user-menu" hidden>
+        <span id="user-name"></span>
+        <button class="btn secondary small" id="logout">ออกจากระบบ</button>
+      </div>
+      <nav class="nav" id="nav" hidden>
+        <a href="#dashboard">ภาพรวม</a>
+        <a href="#diagnose">ตรวจอาการ</a>
+        <a href="#guides">คู่มือ</a>
+        <a href="#reminders">แจ้งเตือน <span class="nav-badge" id="due-badge" hidden></span></a>
+        <a href="#history">ประวัติ</a>
+        <a href="#devices">อุปกรณ์</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" id="view" aria-live="polite"></main>
+
+  <footer class="footer container">
+    DeviceCare — ต้นแบบระบบช่วยนักศึกษาดูแลอุปกรณ์ไอที ลดค่าใช้จ่าย และลดขยะอิเล็กทรอนิกส์ (SDG 12)
+    <br>คำแนะนำเป็นการตรวจสอบเบื้องต้นเท่านั้น หากไม่มั่นใจควรปรึกษาช่างผู้เชี่ยวชาญ
+  </footer>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
