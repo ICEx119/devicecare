@@ -152,11 +152,13 @@ export function dueSummaryText(userId) {
 }
 
 // สำหรับทดสอบบนเครื่องตัวเอง (webhook เข้าถึง localhost ไม่ได้):
-// ถ้าตั้ง LINE_USER_ID ไว้ จะผูกให้บัญชีแรกในระบบโดยอัตโนมัติ
+// ถ้าตั้ง LINE_USER_ID ไว้ จะผูกให้บัญชีแรกในระบบโดยอัตโนมัติ (ยกเว้นบัญชี demo และบัญชีทดลองใช้)
 function linkDevUser() {
   if (!DEV_USER_ID || db.prepare('SELECT 1 FROM users WHERE line_user_id = ?').get(DEV_USER_ID)) return;
-  db.prepare('UPDATE users SET line_user_id = ? WHERE id = (SELECT MIN(id) FROM users) AND line_user_id IS NULL')
-    .run(DEV_USER_ID);
+  db.prepare(`
+    UPDATE users SET line_user_id = ?
+    WHERE id = (SELECT MIN(id) FROM users WHERE is_guest = 0 AND username <> ?) AND line_user_id IS NULL`)
+    .run(DEV_USER_ID, process.env.DEMO_USERNAME || 'demo');
 }
 
 const failedAt = new Map();

@@ -11,6 +11,8 @@ import {
   lineStatus, pushLine, dueSummaryText, createLinkCode, unlinkLine,
   verifySignature, handleWebhook, startLineScheduler,
 } from './notifier.js';
+import { AI_MODEL, INPUT_MAX, INPUT_MIN, AiError, aiConfigured, analyzeSymptoms } from './ai.js';
+import { ensureDemoAccount, createGuestAccount, cleanupGuests } from './demo.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'public');
@@ -79,14 +81,39 @@ const parseList = (row, ...fields) => {
   return out;
 };
 
-const publicUser = (u) => ({ id: u.id, username: u.username, display_name: u.display_name });
+// ชื่อผู้ใช้ที่เป็นผู้ดูแลระบบ คั่นด้วยจุลภาค เช่น ADMIN_USERNAMES=alice,bob
+const ADMINS = new Set((process.env.ADMIN_USERNAMES ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+const isAdmin = (u) => Boolean(u && ADMINS.has(u.username.toLowerCase()));
+
+const publicUser = (u) => ({
+  id: u.id, username: u.username, display_name: u.display_name, is_admin: isAdmin(u), is_guest: Boolean(u.is_guest),
+});
+
+// กันการกดทดลองใช้รัว ๆ (แต่ละบัญชีชั่วคราวได้โควตา AI ของตัวเอง): 10 บัญชี ต่อ IP ต่อชั่วโมง
+const guestHits = new Map();
+function checkGuestLimit(req) {
+  const ip = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress;
+  const now = Date.now();
+  const recent = (guestHits.get(ip) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+  if (recent.length >= 10) throw new HttpError(429, 'สร้างบัญชีทดลองใช้บ่อยเกินไป กรุณาลองใหม่ภายหลัง หรือสมัครสมาชิก');
+  recent.push(now);
+  guestHits.set(ip, recent);
+}
+
+// ผลลัพธ์ที่ไม่ใช่ JSON เช่น ไฟล์ CSV
+class RawResponse {
+  constructor(body, headers) {
+    this.body = body;
+    this.headers = headers;
+  }
+}
 
 // ---------- routes ----------
 
 const routes = [];
-const route = (method, path, handler, { auth = true } = {}) => {
+const route = (method, path, handler, { auth = true, admin = false } = {}) => {
   const re = new RegExp(`^${path.replace(/:(\w+)/g, '(?<$1>\\d+)')}$`);
-  routes.push({ method, re, handler, auth });
+  routes.push({ method, re, handler, auth: auth || admin, admin });
 };
 
 const DEVICE_TYPES = deviceTypes.map((t) => t.key);
@@ -106,10 +133,15 @@ route('POST', '/api/auth/register', ({ body, req, res }) => {
     throw new HttpError(400, 'ชื่อผู้ใช้นี้มีคนใช้แล้ว');
   }
   const displayName = text(body.display_name, 'ชื่อที่แสดง', { max: 50 });
+  if (body.accept_privacy !== true && body.accept_privacy !== 'on') {
+    throw new HttpError(400, 'กรุณาอ่านและยอมรับนโยบายการเก็บข้อมูลส่วนบุคคลก่อนสมัคร');
+  }
 
   let userId;
   transaction(() => {
-    userId = Number(db.prepare('INSERT INTO users (username, display_name, password_hash) VALUES (?, ?, ?)')
+    userId = Number(db.prepare(`
+      INSERT INTO users (username, display_name, password_hash, privacy_accepted_at)
+      VALUES (?, ?, ?, datetime('now', 'localtime'))`)
       .run(username, displayName, hashPassword(password)).lastInsertRowid);
     // บัญชีแรกของระบบได้รับข้อมูลที่บันทึกไว้ก่อนมีระบบสมาชิก
     if (db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 1) claimOrphanData(userId);
@@ -131,13 +163,41 @@ route('POST', '/api/auth/login', ({ body, req, res }) => {
   return publicUser(user);
 }, { auth: false });
 
-route('POST', '/api/auth/logout', ({ req, res }) => {
+route('POST', '/api/auth/guest', ({ req, res }) => {
+  checkGuestLimit(req);
+  const userId = createGuestAccount();
+  res.setHeader('Set-Cookie', sessionCookie(req, createSession(userId)));
+  return publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
+}, { auth: false });
+
+route('POST', '/api/auth/logout', ({ req, res, user }) => {
   destroySession(req);
+  // บัญชีทดลองใช้ไม่มีรหัสผ่าน ออกแล้วกลับเข้าไม่ได้ จึงลบทิ้งทันที
+  if (user?.is_guest) db.prepare('DELETE FROM users WHERE id = ? AND is_guest = 1').run(user.id);
   res.setHeader('Set-Cookie', sessionCookie(req, null));
   return { ok: true };
 }, { auth: false });
 
 route('GET', '/api/auth/me', ({ user }) => publicUser(user));
+
+// สิทธิ์ตาม PDPA: ลบบัญชีและข้อมูลทั้งหมดของตนเอง (อุปกรณ์ แจ้งเตือน ประวัติ ข้อความที่ส่งให้ AI ถูกลบตาม)
+route('POST', '/api/auth/delete-account', ({ body, user, req, res }) => {
+  const { password_hash: hash } = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id);
+  if (!verifyPassword(String(body.password ?? ''), hash)) throw new HttpError(400, 'รหัสผ่านไม่ถูกต้อง');
+  db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+  res.setHeader('Set-Cookie', sessionCookie(req, null));
+  return { ok: true };
+});
+
+route('GET', '/api/auth/my-data', ({ user }) => ({
+  user: db.prepare('SELECT username, display_name, line_user_id IS NOT NULL AS line_linked, privacy_accepted_at, created_at FROM users WHERE id = ?').get(user.id),
+  counts: {
+    devices: db.prepare('SELECT COUNT(*) AS n FROM devices WHERE user_id = ?').get(user.id).n,
+    records: db.prepare('SELECT COUNT(*) AS n FROM records r JOIN devices d ON d.id = r.device_id WHERE d.user_id = ?').get(user.id).n,
+    reminders: db.prepare('SELECT COUNT(*) AS n FROM reminders r JOIN devices d ON d.id = r.device_id WHERE d.user_id = ?').get(user.id).n,
+    ai_logs: db.prepare('SELECT COUNT(*) AS n FROM ai_logs WHERE user_id = ?').get(user.id).n,
+  },
+}));
 
 // อุปกรณ์
 route('GET', '/api/devices', ({ user }) =>
@@ -186,6 +246,39 @@ route('POST', '/api/diagnoses', ({ body, user }) => {
     .run(user.id, oneOf(body.device_type, DEVICE_TYPES, 'ประเภทอุปกรณ์'), code);
   return { ok: true };
 });
+
+// AI วิเคราะห์อาการจากข้อความ
+route('GET', '/api/ai/status', () => ({
+  configured: aiConfigured(), model: AI_MODEL, min_length: INPUT_MIN, max_length: INPUT_MAX,
+}));
+
+route('POST', '/api/ai/analyze', async ({ body, user }) => {
+  let typeKey = body.device_type ? oneOf(body.device_type, DEVICE_TYPES, 'ประเภทอุปกรณ์') : null;
+  let deviceNote = null;
+  if (body.device_id) {
+    const device = db.prepare('SELECT * FROM devices WHERE id = ? AND user_id = ?').get(ownDeviceId(body.device_id, user), user.id);
+    typeKey = device.type;
+    deviceNote = [device.brand, device.purchase_date && `ซื้อเมื่อ ${device.purchase_date}`].filter(Boolean).join(', ') || null;
+  }
+  let result;
+  try {
+    result = await analyzeSymptoms({ userId: user.id, text: body.text, typeKey, deviceNote });
+  } catch (err) {
+    if (err instanceof AiError) throw new HttpError(err.status, err.message);
+    throw err;
+  }
+  const log = db.prepare(`
+    INSERT INTO ai_logs (user_id, device_type, input_text, status, confidence, symptom_code, latency_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    user.id, typeKey ?? result.device_type ?? null, body.text.trim().slice(0, INPUT_MAX), result.status,
+    result.status === 'ok' ? result.confidence : null, result.guide?.code ?? null, result.latency_ms,
+  );
+  return { ...result, log_id: Number(log.lastInsertRowid) };
+});
+
+route('POST', '/api/ai/feedback/:id', ({ body, params, user }) =>
+  mustExist(db.prepare('UPDATE ai_logs SET helpful = ? WHERE id = ? AND user_id = ?')
+    .run(body.helpful ? 1 : 0, params.id, user.id)));
 
 // คู่มือ
 route('GET', '/api/guides', () =>
@@ -267,6 +360,7 @@ route('DELETE', '/api/records/:id', ({ params, user }) =>
 route('GET', '/api/line', ({ user }) => lineStatus(user.id));
 
 route('POST', '/api/line/link-code', ({ user }) => {
+  if (user.is_guest) throw new HttpError(400, 'บัญชีทดลองใช้เชื่อมต่อ LINE ไม่ได้ กรุณาสมัครสมาชิกก่อน');
   if (!lineStatus(user.id).can_link) throw new HttpError(400, 'ระบบยังไม่ได้ตั้งค่า LINE สำหรับการเชื่อมต่อ');
   return createLinkCode(user.id);
 });
@@ -285,6 +379,123 @@ route('POST', '/api/line/send-now', async ({ user }) => {
   await pushLine(user.id, dueSummaryText(user.id) ?? '🎉 DeviceCare: ตอนนี้ไม่มีงานดูแลอุปกรณ์ที่ถึงกำหนด');
   return { ok: true };
 });
+
+// ผู้ดูแลระบบ — ดูข้อมูลรวมของทุกคน (ไม่แสดงรหัสผ่าน token หรือ LINE user ID)
+const ADMIN_TABLES = {
+  users: {
+    label: 'ผู้ใช้',
+    sql: `SELECT id, username, display_name,
+                 CASE WHEN line_user_id IS NULL THEN 'ไม่' ELSE 'ใช่' END AS line_linked,
+                 line_last_sent_at, created_at
+          FROM users`,
+  },
+  devices: {
+    label: 'อุปกรณ์',
+    sql: `SELECT d.id, u.username AS owner, d.name, d.type, d.brand, d.purchase_date, d.created_at
+          FROM devices d LEFT JOIN users u ON u.id = d.user_id`,
+  },
+  reminders: {
+    label: 'การแจ้งเตือน',
+    sql: `SELECT r.id, u.username AS owner, d.name AS device, r.title, r.interval_days, r.next_due, r.created_at
+          FROM reminders r JOIN devices d ON d.id = r.device_id LEFT JOIN users u ON u.id = d.user_id`,
+  },
+  records: {
+    label: 'ประวัติ',
+    sql: `SELECT r.id, u.username AS owner, d.name AS device, r.date, r.kind, r.description, r.cost, r.symptom_code, r.created_at
+          FROM records r JOIN devices d ON d.id = r.device_id LEFT JOIN users u ON u.id = d.user_id`,
+  },
+  diagnosis_logs: {
+    label: 'สถิติตรวจอาการ',
+    sql: `SELECT l.id, u.username AS user, l.device_type, l.symptom_code, s.title AS symptom, l.created_at
+          FROM diagnosis_logs l LEFT JOIN users u ON u.id = l.user_id LEFT JOIN symptoms s ON s.code = l.symptom_code`,
+  },
+  ai_logs: {
+    label: 'AI วิเคราะห์',
+    sql: `SELECT l.id, u.username AS user, l.device_type, l.input_text, l.status, l.confidence, l.symptom_code,
+                 l.latency_ms, CASE l.helpful WHEN 1 THEN '👍' WHEN 0 THEN '👎' END AS helpful, l.created_at
+          FROM ai_logs l LEFT JOIN users u ON u.id = l.user_id`,
+  },
+  symptoms: { label: 'อาการ', sql: 'SELECT id, code, title, device_types, severity FROM symptoms' },
+  guides: { label: 'คู่มือ', sql: 'SELECT id, category, title, device_types, summary FROM guides' },
+};
+
+// StatementSync.columns() มีตั้งแต่ Node 23.11 — รุ่นเก่ากว่าใช้ชื่อคอลัมน์จากแถวแรกแทน
+const columnsOf = (stmt, rows) => stmt.columns?.().map((c) => c.name) ?? Object.keys(rows[0] ?? {});
+
+function adminTable(name) {
+  const table = ADMIN_TABLES[name];
+  if (!table) throw new HttpError(404, 'ไม่พบตารางนี้');
+  return table;
+}
+
+route('GET', '/api/admin/stats', () => {
+  const count = (sql) => db.prepare(sql).get().n;
+  return {
+    users: count('SELECT COUNT(*) AS n FROM users'),
+    line_linked: count('SELECT COUNT(*) AS n FROM users WHERE line_user_id IS NOT NULL'),
+    devices: count('SELECT COUNT(*) AS n FROM devices'),
+    reminders: count('SELECT COUNT(*) AS n FROM reminders'),
+    overdue: db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE next_due <= ?').get(today()).n,
+    records: count('SELECT COUNT(*) AS n FROM records'),
+    repairs: count("SELECT COUNT(*) AS n FROM records WHERE kind = 'repair'"),
+    total_cost: count('SELECT COALESCE(SUM(cost), 0) AS n FROM records'),
+    diagnoses: count('SELECT COUNT(*) AS n FROM diagnosis_logs'),
+    ai: db.prepare(`
+      SELECT COUNT(*) AS total,
+             COALESCE(SUM(status = 'ok'), 0) AS ok,
+             COALESCE(SUM(status = 'need_info'), 0) AS need_info,
+             COALESCE(SUM(status IN ('out_of_scope', 'refused')), 0) AS out_of_scope,
+             CAST(AVG(CASE WHEN latency_ms > 0 THEN latency_ms END) AS INTEGER) AS avg_latency_ms,
+             COALESCE(SUM(helpful = 1), 0) AS helpful,
+             COALESCE(SUM(helpful = 0), 0) AS not_helpful
+      FROM ai_logs`).get(),
+    top_symptoms: db.prepare(`
+      SELECT s.icon, s.title, COUNT(*) AS count
+      FROM diagnosis_logs l JOIN symptoms s ON s.code = l.symptom_code
+      GROUP BY s.code ORDER BY count DESC LIMIT 10`).all(),
+    devices_by_type: db.prepare('SELECT type, COUNT(*) AS count FROM devices GROUP BY type ORDER BY count DESC').all(),
+    tables: Object.entries(ADMIN_TABLES).map(([name, t]) => ({
+      name,
+      label: t.label,
+      rows: db.prepare(`SELECT COUNT(*) AS n FROM (${t.sql})`).get().n,
+    })),
+  };
+}, { admin: true });
+
+route('GET', '/api/admin/table', ({ query }) => {
+  const table = adminTable(query.get('name'));
+  const limit = Math.min(Math.max(Number(query.get('limit')) || 50, 1), 200);
+  const offset = Math.max(Number(query.get('offset')) || 0, 0);
+  const stmt = db.prepare(`SELECT * FROM (${table.sql}) ORDER BY id DESC LIMIT ? OFFSET ?`);
+  const rows = stmt.all(limit, offset);
+  return {
+    columns: columnsOf(stmt, rows),
+    rows,
+    total: db.prepare(`SELECT COUNT(*) AS n FROM (${table.sql})`).get().n,
+    limit,
+    offset,
+  };
+}, { admin: true });
+
+// เปิดใน Excel ได้: ใส่ BOM ให้อ่านภาษาไทยถูก และกันสูตร Excel ที่แฝงมากับข้อมูลผู้ใช้ (CSV injection)
+function toCsv(columns, rows) {
+  const cell = (v) => {
+    let s = v === null || v === undefined ? '' : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return '﻿' + [columns, ...rows.map((r) => columns.map((c) => r[c]))].map((r) => r.map(cell).join(',')).join('\r\n');
+}
+
+route('GET', '/api/admin/table.csv', ({ query }) => {
+  const name = query.get('name');
+  const stmt = db.prepare(`SELECT * FROM (${adminTable(name).sql}) ORDER BY id`);
+  const rows = stmt.all();
+  return new RawResponse(toCsv(columnsOf(stmt, rows), rows), {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="devicecare-${name}-${today()}.csv"`,
+  });
+}, { admin: true });
 
 // แดชบอร์ด
 route('GET', '/api/dashboard', ({ user }) => {
@@ -325,6 +536,7 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
 };
 
@@ -393,9 +605,15 @@ const server = createServer(async (req, res) => {
 
     const user = sessionUser(req);
     if (match.auth && !user) throw new HttpError(401, 'กรุณาเข้าสู่ระบบ');
+    if (match.admin && !isAdmin(user)) throw new HttpError(403, 'เฉพาะผู้ดูแลระบบเท่านั้น');
     const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
     const params = { ...url.pathname.match(match.re).groups };
-    send(res, 200, await match.handler({ body, params, query: url.searchParams, user, req, res }));
+    const result = await match.handler({ body, params, query: url.searchParams, user, req, res });
+    if (result instanceof RawResponse) {
+      res.writeHead(200, result.headers);
+      return res.end(result.body);
+    }
+    send(res, 200, result);
   } catch (err) {
     if (err instanceof HttpError) return send(res, err.status, { error: err.message });
     if (url.pathname.startsWith('/api/line/')) return send(res, 502, { error: err.message });
@@ -404,7 +622,12 @@ const server = createServer(async (req, res) => {
   }
 });
 
+ensureDemoAccount();
+cleanupGuests();
+setInterval(cleanupGuests, 60 * 60 * 1000);
+
 server.listen(PORT, () => {
   console.log(`DeviceCare พร้อมใช้งานที่ http://localhost:${PORT}`);
+  console.log(aiConfigured() ? `AI วิเคราะห์อาการ: เปิดใช้ (${AI_MODEL})` : 'AI วิเคราะห์อาการ: ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY');
   startLineScheduler();
 });

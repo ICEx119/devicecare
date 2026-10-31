@@ -94,6 +94,20 @@ db.exec(`
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
   );
 
+  -- ผลการวิเคราะห์ด้วย AI เก็บข้อความที่ผู้ใช้พิมพ์ด้วย จึงลบตามเมื่อผู้ใช้ลบบัญชี (PDPA)
+  CREATE TABLE IF NOT EXISTS ai_logs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    device_type  TEXT,
+    input_text   TEXT NOT NULL,
+    status       TEXT NOT NULL,            -- ok / need_info / out_of_scope / refused
+    confidence   TEXT,
+    symptom_code TEXT,
+    latency_ms   INTEGER,
+    helpful      INTEGER,                  -- ผู้ใช้กด 👍 = 1, 👎 = 0
+    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_records_device   ON records(device_id, date);
   CREATE INDEX IF NOT EXISTS idx_reminders_due    ON reminders(next_due);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_guides_title ON guides(title);
@@ -141,6 +155,14 @@ if (!hasColumn('devices', 'user_id')) {
 }
 if (!hasColumn('diagnosis_logs', 'user_id')) {
   db.exec('ALTER TABLE diagnosis_logs ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
+}
+// วันที่ผู้ใช้ยอมรับนโยบายข้อมูลส่วนบุคคลตอนสมัคร (บัญชีเก่ายังว่าง)
+if (!hasColumn('users', 'privacy_accepted_at')) {
+  db.exec('ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT');
+}
+// บัญชีชั่วคราวจากปุ่ม "ทดลองใช้งาน" (ลบอัตโนมัติ ดู demo.js)
+if (!hasColumn('users', 'is_guest')) {
+  db.exec('ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0');
 }
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);

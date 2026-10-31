@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="54 50 404 404" role="img" aria-label="DeviceCare">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a7de9"/>
+      <stop offset="1" stop-color="#1558bc"/>
+    </linearGradient>
+  </defs>
+  <!-- renew ring: extending the device's life -->
+  <path d="M364 127.3A168 168 0 1 1 198.5 98.1" fill="none" stroke="url(#ring)" stroke-width="30" stroke-linecap="round"/>
+  <path d="M232 86 L184 66 L196 128 Z" fill="#2a7de9" stroke="#2a7de9" stroke-width="10" stroke-linejoin="round"/>
+  <!-- laptop -->
+  <rect x="166" y="174" width="180" height="120" rx="16" fill="none" stroke="#1c2b42" stroke-width="22"/>
+  <path d="M162 330H350" stroke="#1c2b42" stroke-width="22" stroke-linecap="round"/>
+  <!-- health pulse: checking the device -->
+  <path d="M190 236H222L238 206L258 264L276 222L290 236H322" fill="none" stroke="#22a06b" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

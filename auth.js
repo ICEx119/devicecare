@@ -49,7 +49,7 @@ export function sessionUser(req) {
   const token = parseCookies(req.headers.cookie).sid;
   if (!token) return null;
   return db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.line_user_id
+    SELECT u.id, u.username, u.display_name, u.line_user_id, u.is_guest
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = ? AND s.expires_at > datetime('now')`).get(token) ?? null;
 }
