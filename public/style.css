@@ -104,7 +104,7 @@ p { margin: 0 0 .75rem; }
 .card + .card { margin-top: 1.5rem; }
 .grid > .card + .card { margin-top: 0; }
 .grid { display: grid; gap: 1.5rem; }
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .grid-4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 .stack > * + * { margin-top: 1.5rem; }
@@ -319,8 +319,9 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 /* checkbox + text */
-label.check { display: flex; gap: .55rem; align-items: flex-start; font-weight: 400; }
-label.check input { width: auto; margin-top: .3rem; flex: none; }
+/* baseline ให้เลขข้อของ <ol> ตรงกับบรรทัดแรกของข้อความ แล้วเลื่อนช่องติ๊กลงมาให้อยู่กลางบรรทัด */
+label.check { display: flex; gap: .55rem; align-items: baseline; font-weight: 400; }
+label.check input { width: auto; margin: 0; flex: none; position: relative; top: .3em; }
 
 .user-menu a { text-decoration: none; }
 
@@ -361,4 +362,6 @@ label.check input { width: auto; margin-top: .3rem; flex: none; }
   .user-chip-name { display: none; }
   .user-chip { padding: .2rem; }
   .nav a { padding: .7rem .6rem; font-size: .9rem; }
+  /* iOS ซูมหน้าเองเมื่อแตะช่องกรอกที่ตัวอักษรเล็กกว่า 16px แล้วไม่ซูมกลับ */
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
 }

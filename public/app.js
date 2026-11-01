@@ -840,8 +840,7 @@ const views = {
             <section class="card">
               <h2>${s.icon} ${esc(s.title)} <span class="badge ${SEVERITY[s.severity][1]}">${SEVERITY[s.severity][0]}</span></h2>
               <p class="sub">ทำตามขั้นตอนทีละข้อ ติ๊กเมื่อทำเสร็จ</p>
-              <ol class="steps">${s.steps.map((t, i) => `
-                <li><label style="display:flex;gap:.5rem;font-weight:400"><input type="checkbox" style="width:auto"> <span>${esc(t)}</span></label></li>`).join('')}</ol>
+              ${checklist(s.steps)}
             </section>
             <div class="stack">
               <section class="callout danger">
