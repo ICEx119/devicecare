@@ -11,7 +11,7 @@ import {
   lineStatus, pushLine, dueSummaryText, createLinkCode, unlinkLine,
   verifySignature, handleWebhook, startLineScheduler,
 } from './notifier.js';
-import { AI_MODEL, INPUT_MAX, INPUT_MIN, AiError, aiConfigured, analyzeSymptoms } from './ai.js';
+import { AI_MODEL, INPUT_MAX, INPUT_MIN, IMAGE_MAX_COUNT, IMAGE_MAX_BYTES, AiError, aiConfigured, analyzeSymptoms } from './ai.js';
 import { ensureDemoAccount, createGuestAccount, cleanupGuests } from './demo.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -111,9 +111,9 @@ class RawResponse {
 // ---------- routes ----------
 
 const routes = [];
-const route = (method, path, handler, { auth = true, admin = false } = {}) => {
+const route = (method, path, handler, { auth = true, admin = false, maxBody = 100_000 } = {}) => {
   const re = new RegExp(`^${path.replace(/:(\w+)/g, '(?<$1>\\d+)')}$`);
-  routes.push({ method, re, handler, auth: auth || admin, admin });
+  routes.push({ method, re, handler, auth: auth || admin, admin, maxBody });
 };
 
 const DEVICE_TYPES = deviceTypes.map((t) => t.key);
@@ -250,6 +250,7 @@ route('POST', '/api/diagnoses', ({ body, user }) => {
 // AI วิเคราะห์อาการจากข้อความ
 route('GET', '/api/ai/status', () => ({
   configured: aiConfigured(), model: AI_MODEL, min_length: INPUT_MIN, max_length: INPUT_MAX,
+  max_images: IMAGE_MAX_COUNT, max_image_bytes: IMAGE_MAX_BYTES,
 }));
 
 route('POST', '/api/ai/analyze', async ({ body, user }) => {
@@ -262,7 +263,11 @@ route('POST', '/api/ai/analyze', async ({ body, user }) => {
   }
   let result;
   try {
-    result = await analyzeSymptoms({ userId: user.id, text: body.text, typeKey, deviceNote });
+    result = await analyzeSymptoms({
+      userId: user.id, text: body.text, typeKey, deviceNote,
+      triedCode: typeof body.tried_symptom_code === 'string' ? body.tried_symptom_code : null,
+      images: body.images,
+    });
   } catch (err) {
     if (err instanceof AiError) throw new HttpError(err.status, err.message);
     throw err;
@@ -270,11 +275,13 @@ route('POST', '/api/ai/analyze', async ({ body, user }) => {
   const log = db.prepare(`
     INSERT INTO ai_logs (user_id, device_type, input_text, status, confidence, symptom_code, latency_ms)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    user.id, typeKey ?? result.device_type ?? null, body.text.trim().slice(0, INPUT_MAX), result.status,
+    // เก็บแค่จำนวนรูป ไม่เก็บตัวรูปลงฐานข้อมูล
+    user.id, typeKey ?? result.device_type ?? null,
+    `${Array.isArray(body.images) && body.images.length ? `[แนบรูป ${body.images.length} รูป] ` : ''}${String(body.text ?? '').trim()}`.slice(0, INPUT_MAX + 20), result.status,
     result.status === 'ok' ? result.confidence : null, result.guide?.code ?? null, result.latency_ms,
   );
   return { ...result, log_id: Number(log.lastInsertRowid) };
-});
+}, { maxBody: 6_000_000 });
 
 route('POST', '/api/ai/feedback/:id', ({ body, params, user }) =>
   mustExist(db.prepare('UPDATE ai_logs SET helpful = ? WHERE id = ? AND user_id = ?')
@@ -545,19 +552,19 @@ function send(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-async function readRaw(req) {
+async function readRaw(req, maxBody = 100_000) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 100_000) throw new HttpError(413, 'ข้อมูลมีขนาดใหญ่เกินไป');
+    if (size > maxBody) throw new HttpError(413, 'ข้อมูลมีขนาดใหญ่เกินไป');
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
 }
 
-async function readBody(req) {
-  const raw = (await readRaw(req)).toString('utf8');
+async function readBody(req, maxBody) {
+  const raw = (await readRaw(req, maxBody)).toString('utf8');
   if (!raw) return {};
   try {
     return JSON.parse(raw);
@@ -606,7 +613,7 @@ const server = createServer(async (req, res) => {
     const user = sessionUser(req);
     if (match.auth && !user) throw new HttpError(401, 'กรุณาเข้าสู่ระบบ');
     if (match.admin && !isAdmin(user)) throw new HttpError(403, 'เฉพาะผู้ดูแลระบบเท่านั้น');
-    const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
+    const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req, match.maxBody) : {};
     const params = { ...url.pathname.match(match.re).groups };
     const result = await match.handler({ body, params, query: url.searchParams, user, req, res });
     if (result instanceof RawResponse) {

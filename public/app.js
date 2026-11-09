@@ -277,11 +277,89 @@ function showLinkSteps(line, { code, expires_in_minutes }) {
 
 const CONFIDENCE = { high: ['ความมั่นใจสูง', 'green'], medium: ['ความมั่นใจปานกลาง', 'amber'], low: ['ความมั่นใจต่ำ', 'red'] };
 const URGENCY = { low: ['ไม่เร่งด่วน', 'green'], medium: ['ควรแก้ไขเร็ว ๆ นี้', 'amber'], high: ['เร่งด่วน', 'red'] };
-const AI_EXAMPLES = [
-  'โน้ตบุ๊กร้อนมากตอนเปิด Zoom พัดลมดังตลอด บางทีดับไปเอง',
-  'มือถือชาร์จเข้าช้ามาก ต้องขยับสายถึงจะเข้า',
-  'เครื่องพิมพ์พิมพ์ออกมาเป็นเส้นขาด ๆ สีจาง ทั้งที่เพิ่งเติมหมึก',
-];
+// ตัวอย่างอาการตามประเภทอุปกรณ์ที่เลือก ('' = ยังไม่ได้เลือก)
+const AI_EXAMPLES_BY_TYPE = {
+  '': [
+    'โน้ตบุ๊กร้อนมากตอนเปิด Zoom พัดลมดังตลอด บางทีดับไปเอง',
+    'มือถือชาร์จเข้าช้ามาก ต้องขยับสายถึงจะเข้า',
+    'เครื่องพิมพ์พิมพ์ออกมาเป็นเส้นขาด ๆ สีจาง ทั้งที่เพิ่งเติมหมึก',
+  ],
+  laptop: [
+    'โน้ตบุ๊กร้อนมากตอนเปิด Zoom พัดลมดังตลอด บางทีดับไปเอง',
+    'แบตลดเร็วมาก ชาร์จเต็มใช้ได้ไม่ถึง 2 ชั่วโมง',
+    'เปิดเครื่องช้ามาก กว่าจะใช้งานได้เกือบ 5 นาที',
+  ],
+  desktop: [
+    'คอมเปิดติดแต่จอไม่ขึ้นภาพ ได้ยินเสียงพัดลมหมุน',
+    'คอมค้างบ่อยตอนเล่นเกม บางทีรีสตาร์ตเอง',
+    'พัดลมในเคสเสียงดังผิดปกติ มีเสียงแกรก ๆ',
+  ],
+  tablet: [
+    'iPad แบตหมดเร็ว ชาร์จเต็มใช้เรียนได้ไม่ถึงครึ่งวัน',
+    'หน้าจอ iPad แตะแล้วไม่ตอบสนองบางจุด โดยเฉพาะมุมขวา',
+    'Apple Pencil เชื่อมต่อไม่ได้ ทั้งที่ชาร์จแล้ว',
+  ],
+  smartphone: [
+    'มือถือชาร์จเข้าช้ามาก ต้องขยับสายถึงจะเข้า',
+    'มือถือเครื่องร้อนตอนเล่นเกม แบตลดเร็ว',
+    'พื้นที่เต็ม แอปเด้งออกเองบ่อย ๆ',
+  ],
+  monitor: [
+    'จอกะพริบเป็นระยะ บางทีดับไปแล้วกลับมาเอง',
+    'จอขึ้น No Signal ทั้งที่เสียบสาย HDMI แล้ว',
+    'มีเส้นแนวตั้งขึ้นบนจอ สีเพี้ยน',
+  ],
+  printer: [
+    'เครื่องพิมพ์พิมพ์ออกมาเป็นเส้นขาด ๆ สีจาง ทั้งที่เพิ่งเติมหมึก',
+    'กระดาษติดในเครื่องบ่อย ดึงออกแล้วก็ติดอีก',
+    'สั่งพิมพ์จากคอมแล้วเครื่องพิมพ์ไม่ทำงาน ขึ้น offline',
+  ],
+  peripheral: [
+    'เมาส์ไร้สายกระตุก เคอร์เซอร์ค้างเป็นช่วง ๆ',
+    'คีย์บอร์ดบางปุ่มกดไม่ติด ต้องกดแรง ๆ',
+    'ทำน้ำหกใส่คีย์บอร์ด ตอนนี้บางปุ่มพิมพ์เบิ้ล',
+  ],
+  headphones: [
+    'หูฟังบลูทูธเสียงออกข้างเดียว',
+    'หูฟังเสียงขาด ๆ หาย ๆ ตอนขยับสาย',
+    'หูฟังเชื่อมต่อมือถือไม่ได้ ทั้งที่เคยใช้ได้',
+  ],
+  storage: [
+    'เสียบแฟลชไดรฟ์แล้วคอมไม่เห็นไดรฟ์',
+    'ฮาร์ดดิสก์ภายนอกมีเสียงติ๊ก ๆ และคัดลอกไฟล์ช้ามาก',
+    'คอมแจ้งให้ฟอร์แมตไดรฟ์ทุกครั้งที่เสียบ',
+  ],
+  other: [
+    'ปลั๊กพ่วงมีกลิ่นไหม้ และร้อนตอนเสียบที่ชาร์จหลายตัว',
+    'เราเตอร์ Wi-Fi หลุดบ่อย ต้องรีสตาร์ตทุกวัน',
+    'สายชาร์จต้องบิดถึงจะชาร์จเข้า ตรงหัวเริ่มแตก',
+  ],
+};
+
+// ย่อรูปในเบราว์เซอร์ก่อนส่ง: ไฟล์เล็กลง ส่งเร็วขึ้น และตัดข้อมูล EXIF (เช่น พิกัด GPS) ทิ้งไปด้วย
+async function prepareImage(file, maxSide = 1280) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('เปิดรูปนี้ไม่ได้ ลองถ่ายใหม่หรือเลือกไฟล์ JPG/PNG'));
+      el.src = url;
+    });
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    return { media_type: 'image/jpeg', data: dataUrl.split(',')[1], preview: dataUrl };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// ส่งต่อจากหน้าตรวจอาการไปหน้า AI เมื่อทำครบทุกขั้นตอนแล้วยังไม่หาย
+let aiHandoff = null;
 
 const checklist = (items) => `<ol class="steps">${items.map((t) => `
   <li><label class="check"><input type="checkbox"> <span>${esc(t)}</span></label></li>`).join('')}</ol>`;
@@ -369,7 +447,90 @@ function aiResultHtml(r, devices, deviceValue) {
         </div>
         ${meta}
       </section>
+      <section class="card callout warn ai-escalate" id="ai-escalate">
+        <div>
+          <h2>ทำตามคำแนะนำแล้วยังไม่หาย?</h2>
+          <p class="sub" style="margin:0">ลองเองครบแล้วแต่ยังไม่ดีขึ้น ฝืนแก้ต่ออาจทำให้เสียหายมากกว่าเดิม ระบบจะช่วยเตรียมข้อมูลสำหรับส่งช่างให้</p>
+        </div>
+        <div><button class="btn" data-escalate>🔧 ยังแก้ไม่ได้ เตรียมส่งช่าง</button></div>
+      </section>
     </div>`;
+}
+
+// ใบสรุปอาการให้ช่าง: ช่างไม่ต้องไล่ถามใหม่ และไม่ต้องจ่ายค่าตรวจซ้ำในสิ่งที่ลองไปแล้ว
+function repairTicketText({ r, text, photoCount, device, typeKey, tried }) {
+  const lines = [
+    `ใบสรุปอาการส่งซ่อม (${new Date().toLocaleDateString('th-TH', { dateStyle: 'long' })})`,
+    '',
+    `อุปกรณ์: ${device ? [device.name, device.brand].filter(Boolean).join(' / ') : TYPE_LABEL[typeKey] ?? 'ไม่ระบุ'}`,
+    device?.purchase_date && `ซื้อเมื่อ: ${device.purchase_date} (ใช้มา ${ageText(device.purchase_date)})`,
+    '',
+    `อาการ: ${text || '(ดูจากรูป)'}`,
+    photoCount ? `มีรูปอาการ ${photoCount} รูป (ขอดูจากเจ้าของเครื่องได้)` : null,
+    '',
+    'สิ่งที่ลองแก้เองแล้ว (ไม่หาย):',
+    ...(tried ? tried.steps.map((t) => `- ${t}`) : []),
+    ...r.steps.map((t) => `- ${t}`),
+    '',
+    'สาเหตุที่น่าจะเป็น (จากการวิเคราะห์เบื้องต้นด้วย AI):',
+    ...r.causes.map((c) => `- ${c.cause}`),
+  ];
+  return lines.filter((l) => l !== null && l !== undefined && l !== false).join('\n');
+}
+
+function repairPrepHtml({ r, text, photoCount, device, typeKey, tried, candidates }) {
+  const type = device?.type ?? typeKey;
+  const ageYears = device?.purchase_date ? (Date.now() - new Date(device.purchase_date)) / (365.25 * 864e5) : null;
+  const mapsQuery = (q) => `https://www.google.com/maps/search/${encodeURIComponent(q)}`;
+  const shops = [
+    device?.brand && [`🏢 ศูนย์บริการ ${device.brand}`, mapsQuery(`ศูนย์บริการ ${device.brand}`)],
+    [`🛠️ ร้านซ่อม${TYPE_LABEL[type] ?? 'อุปกรณ์ไอที'}ใกล้ฉัน`, mapsQuery(`ร้านซ่อม${TYPE_LABEL[type] ?? 'อุปกรณ์ไอที'}`)],
+  ].filter(Boolean);
+  const prep = [
+    'สำรองข้อมูลสำคัญก่อน ถ้าเครื่องยังเปิดได้ (ถ้าเปิดไม่ได้ ให้บอกช่างว่าต้องการกู้ข้อมูล)',
+    'ถ่ายรูปสภาพเครื่องรอบตัวไว้ และจดหมายเลขเครื่อง (Serial Number)',
+    'ถอดซิม เมมโมรีการ์ด แฟลชไดรฟ์ หรือเคส ออกให้หมด',
+    'ห้ามบอกรหัสผ่านบัญชี (Apple ID / Google / อีเมล) ให้ร้าน ถ้าร้านต้องใช้ ให้ตั้งรหัสเครื่องชั่วคราวแทน',
+    'ขอใบเสนอราคาก่อนเริ่มซ่อม และถามระยะเวลารับประกันงานซ่อม',
+    'ขอดูหรือขอรับอะไหล่เก่าคืน',
+  ];
+  return `
+    <section class="card repair-prep" id="repair-prep">
+      <h2>🔧 ถึงเวลาให้ช่างช่วยแล้ว</h2>
+      <p class="sub">คุณลองแก้เองอย่างปลอดภัยครบแล้ว ขั้นต่อไปคือให้ผู้เชี่ยวชาญตรวจ เตรียมตามนี้จะซ่อมได้เร็วขึ้นและไม่เสียค่าตรวจซ้ำ</p>
+      ${ageYears !== null && ageYears < 1 ? `
+        <div class="callout info" style="margin-bottom:1rem"><strong>🛡️ เครื่องอาจยังอยู่ในประกัน</strong> (ซื้อเมื่อ ${esc(device.purchase_date)})
+          ติดต่อศูนย์บริการของแบรนด์ก่อน อย่าให้ร้านทั่วไปแกะเครื่อง เพราะประกันอาจขาด</div>` : ''}
+      <div class="grid grid-2">
+        <div>
+          <h3>1. ใบสรุปอาการสำหรับช่าง</h3>
+          <p class="hint" style="margin:0 0 .4rem">คัดลอกไปส่งในแชตร้าน หรือเปิดให้ช่างดูตอนส่งเครื่อง แก้ไขข้อความได้</p>
+          <textarea id="repair-ticket" rows="10">${esc(repairTicketText({ r, text, photoCount, device, typeKey, tried }))}</textarea>
+          <p style="margin:.5rem 0 0"><button class="btn secondary small" data-copy-ticket>📋 คัดลอกใบสรุป</button></p>
+        </div>
+        <div>
+          <h3>2. เตรียมก่อนส่งเครื่อง</h3>
+          ${checklist(prep)}
+        </div>
+      </div>
+      <h3>3. หาที่ซ่อม</h3>
+      <div class="filters">${shops.map(([label, href]) => `<a class="btn secondary small" href="${href}" target="_blank" rel="noopener">${esc(label)}</a>`).join('')}</div>
+      <p class="hint" style="margin:.5rem 0 0">นักศึกษาลองสอบถามฝ่ายบริการไอทีของมหาวิทยาลัยก่อนได้ บางแห่งตรวจเช็กให้ฟรี</p>
+      <h3>4. บันทึกการส่งซ่อมลงประวัติ</h3>
+      ${candidates.length ? `
+        <form class="form" id="repair-save">
+          <div class="form-row">
+            <label>อุปกรณ์<select name="device_id" required>${deviceOptions(candidates, device?.id)}</select></label>
+            <label>ร้าน / ศูนย์ที่ส่ง (ไม่บังคับ)<input name="shop" maxlength="100" placeholder="เช่น ศูนย์บริการหน้ามหาวิทยาลัย"></label>
+          </div>
+          <div><button class="btn secondary">บันทึกว่าส่งซ่อมแล้ว</button></div>
+        </form>`
+        : `<p class="sub">ยังไม่มีอุปกรณ์${TYPE_LABEL[type] ? `ประเภท${TYPE_LABEL[type]}` : ''}ในระบบ · <a href="#devices">เพิ่มอุปกรณ์</a></p>`}
+      <div class="callout info" style="margin-top:1.25rem">
+        <strong>♻️ ถ้าค่าซ่อมไม่คุ้ม</strong> อย่าทิ้งรวมกับขยะทั่วไป ขายเป็นอะไหล่ ส่งต่อให้ร้านรับซื้อเครื่องเสีย
+        หรือนำไปทิ้งที่จุดรับขยะอิเล็กทรอนิกส์ เพื่อให้ชิ้นส่วนถูกนำกลับมาใช้ใหม่อย่างปลอดภัย
+      </div>
+    </section>`;
 }
 
 const noDevicesCard = (what) => `
@@ -386,6 +547,20 @@ const views = {
   async ai() {
     const [status, devices] = await Promise.all([api('/ai/status'), api('/devices')]);
     let last = null;
+    const handoff = aiHandoff;
+    aiHandoff = null;
+    const startValue = handoff
+      ? (handoff.device_id && devices.some((d) => String(d.id) === String(handoff.device_id)) ? `d:${handoff.device_id}` : `t:${handoff.type}`)
+      : '';
+    let examples = AI_EXAMPLES_BY_TYPE[''];
+    const examplesFor = (value) => {
+      const type = value.startsWith('d:')
+        ? devices.find((d) => `d:${d.id}` === value)?.type
+        : value.slice(2);
+      return AI_EXAMPLES_BY_TYPE[type] ?? AI_EXAMPLES_BY_TYPE[''];
+    };
+    if (handoff) examples = examplesFor(startValue);
+    const examplesHtml = () => examples.map((t, i) => `<button type="button" class="chip" data-example="${i}">${esc(t)}</button>`).join('');
 
     view.innerHTML = `
       <div class="page-head">
@@ -397,24 +572,37 @@ const views = {
           <h2>ระบบ AI ยังไม่พร้อมใช้งาน</h2>
           <p style="margin:0">ผู้ดูแลระบบยังไม่ได้ตั้งค่า AI ระหว่างนี้ใช้ <a href="#diagnose">ตรวจอาการแบบเลือกจากรายการ</a> แทนได้</p>
         </div>`}
+      ${handoff ? `
+        <div class="card callout info" id="ai-handoff" style="margin-bottom:1.5rem">
+          <h2>🔁 ต่อจากการตรวจอาการ: ${handoff.symptom.icon} ${esc(handoff.symptom.title)}</h2>
+          <p style="margin:0">คุณทำตามคู่มือครบ ${handoff.symptom.steps.length} ขั้นตอนแล้วแต่ยังไม่หาย AI จะรู้ว่าลองอะไรไปแล้ว และจะหาสาเหตุอื่นกับขั้นตอนถัดไปให้
+            เล่าเพิ่มอีกนิดว่า<strong>ตอนนี้อาการเป็นอย่างไร</strong> เช่น เปิดเครื่องแล้วเกิดอะไรขึ้น มีเสียง กลิ่น หรือไฟแสดงสถานะอย่างไร</p>
+          <p class="hint" style="margin:.5rem 0 0"><button type="button" class="btn secondary small" data-cancel-handoff>ไม่ใช้ข้อมูลนี้ เริ่มใหม่</button></p>
+        </div>` : ''}
       <section class="card">
         <form class="form" id="ai-form" novalidate>
           <label>อุปกรณ์ที่มีอาการ
             <select name="device">
               <option value="">ไม่ระบุ (ให้ AI ดูจากข้อความ)</option>
-              ${devices.length ? `<optgroup label="อุปกรณ์ของฉัน">${devices.map((d) => `<option value="d:${d.id}">${TYPE_ICON[d.type]} ${esc(d.name)}</option>`).join('')}</optgroup>` : ''}
-              <optgroup label="ประเภทอุปกรณ์">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="t:${k}">${TYPE_ICON[k]} ${v}</option>`).join('')}</optgroup>
+              ${devices.length ? `<optgroup label="อุปกรณ์ของฉัน">${devices.map((d) => `<option value="d:${d.id}" ${startValue === `d:${d.id}` ? 'selected' : ''}>${TYPE_ICON[d.type]} ${esc(d.name)}</option>`).join('')}</optgroup>` : ''}
+              <optgroup label="ประเภทอุปกรณ์">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="t:${k}" ${startValue === `t:${k}` ? 'selected' : ''}>${TYPE_ICON[k]} ${v}</option>`).join('')}</optgroup>
             </select>
           </label>
           <label>อาการที่พบ
-            <textarea name="text" id="ai-text" rows="4" maxlength="${status.max_length}" placeholder="เช่น ${esc(AI_EXAMPLES[0])}"></textarea>
+            <textarea name="text" id="ai-text" rows="4" maxlength="${status.max_length}" placeholder="เช่น ${esc(examples[0])}"></textarea>
             <span class="field-foot"><span class="field-error" id="ai-error"></span><span class="hint" id="ai-count">0/${status.max_length}</span></span>
           </label>
+          <div class="ai-photos">
+            <span class="label-text">รูปอาการ (ไม่บังคับ แนบได้ ${status.max_images} รูป)</span>
+            <p class="hint" style="margin:0">ถ่ายจุดที่มีปัญหาให้ชัด เช่น รอยแตก คราบน้ำ ข้อความ error บนจอ หรือไฟแสดงสถานะ ช่วยให้ AI วิเคราะห์แม่นขึ้น</p>
+            <div class="photo-list" id="ai-photo-list"></div>
+            <input type="file" id="ai-photo-input" accept="image/*" multiple hidden>
+          </div>
           <div>
             <span class="hint">ไม่รู้จะเริ่มยังไง ลองกดตัวอย่าง:</span>
-            <div class="filters examples">${AI_EXAMPLES.map((t, i) => `<button type="button" class="chip" data-example="${i}">${esc(t)}</button>`).join('')}</div>
+            <div class="filters examples" id="ai-examples">${examplesHtml()}</div>
           </div>
-          <p class="hint" style="margin:0">🔒 ข้อความจะถูกส่งไปวิเคราะห์ที่บริการ AI ภายนอก (Anthropic Claude) กรุณาอย่าใส่ข้อมูลส่วนตัว เช่น ชื่อ-นามสกุล เบอร์โทร หรือรหัสผ่าน ·
+          <p class="hint" style="margin:0">🔒 ข้อความและรูปจะถูกส่งไปวิเคราะห์ที่บริการ AI ภายนอก (Anthropic Claude) ระบบไม่เก็บรูปไว้ กรุณาอย่าใส่ข้อมูลส่วนตัว เช่น ชื่อ-นามสกุล เบอร์โทร หรือรหัสผ่าน และระวังไม่ให้รูปติดใบหน้าหรือเอกสารส่วนตัว ·
             <a href="/privacy.html" target="_blank" rel="noopener">อ่านนโยบาย</a></p>
           <div><button class="btn" id="ai-submit" ${status.configured ? '' : 'disabled'}>✨ วิเคราะห์ด้วย AI</button></div>
         </form>
@@ -433,15 +621,58 @@ const views = {
       errorEl.textContent = '';
     };
     textEl.addEventListener('input', updateCount);
+    let tried = handoff?.symptom.code ?? null;
+    let lastCtx = null;
+    let photos = [];
+    const drawPhotos = () => {
+      $('#ai-photo-list').innerHTML = photos.map((p, i) => `
+        <figure class="photo-thumb">
+          <img src="${p.preview}" alt="รูปอาการที่ ${i + 1}">
+          <button type="button" class="photo-remove" data-remove-photo="${i}" aria-label="ลบรูปที่ ${i + 1}">✕</button>
+        </figure>`).join('')
+        + (photos.length < status.max_images ? `<button type="button" class="photo-add" data-add-photo>📷<span>เพิ่มรูป</span></button>` : '');
+    };
+    drawPhotos();
+    $('#ai-photo-input').addEventListener('change', async (e) => {
+      const files = [...e.target.files];
+      e.target.value = '';
+      const room = status.max_images - photos.length;
+      if (files.length > room) toast(`แนบได้อีก ${room} รูป ใช้เฉพาะ ${room} รูปแรก`, true);
+      for (const file of files.slice(0, room)) {
+        if (!file.type.startsWith('image/')) { toast('เลือกได้เฉพาะไฟล์รูปภาพ', true); continue; }
+        try {
+          const p = await prepareImage(file);
+          if (p.data.length * 0.75 > status.max_image_bytes) { toast('รูปมีขนาดใหญ่เกินไป', true); continue; }
+          photos.push(p);
+        } catch (err) {
+          toast(err.message, true);
+        }
+      }
+      drawPhotos();
+      errorEl.textContent = '';
+    });
+    if (handoff) {
+      textEl.value = `${handoff.symptom.title} ทำตามขั้นตอนครบแล้วแต่ยังไม่หาย ตอนนี้อาการคือ `;
+      updateCount();
+      textEl.focus();
+      textEl.setSelectionRange(textEl.value.length, textEl.value.length);
+    }
+    $('#ai-form').device.addEventListener('change', (e) => {
+      examples = examplesFor(e.target.value);
+      $('#ai-examples').innerHTML = examplesHtml();
+      textEl.placeholder = `เช่น ${examples[0]}`;
+    });
 
     $('#ai-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = formData(e.target);
       const text = f.text.trim();
-      if (!text) return showError('กรุณาพิมพ์อาการที่พบ');
-      if (text.length < status.min_length) return showError(`กรุณาเล่าอาการให้ละเอียดขึ้นอีกนิด (อย่างน้อย ${status.min_length} ตัวอักษร)`);
+      if (!text && !photos.length) return showError('กรุณาพิมพ์อาการที่พบ หรือแนบรูป');
+      if (!photos.length && text.length < status.min_length) return showError(`กรุณาเล่าอาการให้ละเอียดขึ้นอีกนิด (อย่างน้อย ${status.min_length} ตัวอักษร)`);
 
       const body = { text };
+      if (photos.length) body.images = photos.map(({ media_type, data }) => ({ media_type, data }));
+      if (tried) body.tried_symptom_code = tried;
       if (f.device.startsWith('d:')) body.device_id = f.device.slice(2);
       else if (f.device.startsWith('t:')) body.device_type = f.device.slice(2);
 
@@ -452,7 +683,7 @@ const views = {
       resultEl.innerHTML = `
         <section class="card ai-loading" role="status">
           <span class="spinner" aria-hidden="true"></span>
-          <div><strong>AI กำลังวิเคราะห์อาการ…</strong><div class="hint">ปกติใช้เวลาไม่เกิน 10 วินาที · <span id="ai-elapsed">0.0</span> วินาที</div></div>
+          <div><strong>AI กำลัง${photos.length ? 'ดูรูปและ' : ''}วิเคราะห์อาการ…</strong><div class="hint">ปกติใช้เวลาไม่เกิน 10 วินาที · <span id="ai-elapsed">0.0</span> วินาที</div></div>
         </section>`;
       const timer = setInterval(() => {
         const el = $('#ai-elapsed');
@@ -461,6 +692,7 @@ const views = {
       try {
         const r = await api('/ai/analyze', { method: 'POST', body });
         last = r;
+        lastCtx = { text, deviceValue: f.device, tried: tried ? handoff.symptom : null, photoCount: photos.length };
         resultEl.innerHTML = aiResultHtml(r, devices, f.device);
         resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (err) {
@@ -480,14 +712,40 @@ const views = {
     view.onclick = async (e) => {
       const example = e.target.closest('[data-example]');
       const feedback = e.target.closest('[data-feedback]');
-      if (example) {
-        textEl.value = AI_EXAMPLES[example.dataset.example];
+      if (e.target.closest('[data-add-photo]')) {
+        $('#ai-photo-input').click();
+      } else if (e.target.closest('[data-remove-photo]')) {
+        photos.splice(Number(e.target.closest('[data-remove-photo]').dataset.removePhoto), 1);
+        drawPhotos();
+      } else if (example) {
+        textEl.value = examples[example.dataset.example];
+        updateCount();
+        textEl.focus();
+      } else if (e.target.closest('[data-cancel-handoff]')) {
+        tried = null;
+        $('#ai-handoff').remove();
+        textEl.value = '';
         updateCount();
         textEl.focus();
       } else if (e.target.closest('[data-retry]')) {
         textEl.focus();
         textEl.setSelectionRange(textEl.value.length, textEl.value.length);
         textEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (e.target.closest('[data-escalate]') && last && lastCtx) {
+        const { deviceValue } = lastCtx;
+        const device = deviceValue.startsWith('d:') ? devices.find((d) => `d:${d.id}` === deviceValue) : null;
+        const typeKey = device?.type ?? (deviceValue.startsWith('t:') ? deviceValue.slice(2) : last.device_type);
+        const candidates = device ? [device] : devices.filter((d) => !typeKey || d.type === typeKey);
+        $('#ai-escalate').outerHTML = repairPrepHtml({ r: last, text: lastCtx.text, photoCount: lastCtx.photoCount, device, typeKey, tried: lastCtx.tried, candidates });
+        $('#repair-prep').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (e.target.closest('[data-copy-ticket]')) {
+        try {
+          await navigator.clipboard.writeText($('#repair-ticket').value);
+          toast('คัดลอกใบสรุปแล้ว');
+        } catch {
+          $('#repair-ticket').select();
+          toast('คัดลอกไม่สำเร็จ กรุณากดค้างแล้วเลือกคัดลอกเอง', true);
+        }
       } else if (feedback && last) {
         try {
           await api(`/ai/feedback/${last.log_id}`, { method: 'POST', body: { helpful: feedback.dataset.feedback === '1' } });
@@ -499,6 +757,28 @@ const views = {
     };
 
     view.onsubmit = async (e) => {
+      if (e.target.id === 'repair-save') {
+        e.preventDefault();
+        const f = formData(e.target);
+        try {
+          await api('/records', {
+            method: 'POST',
+            body: {
+              device_id: f.device_id,
+              date: todayISO(),
+              kind: 'repair',
+              description: `ส่งซ่อม${f.shop.trim() ? ` (${f.shop.trim()})` : ''}: ${last.summary} — ลองแก้เองตามคำแนะนำแล้วไม่หาย`.slice(0, 500),
+              cost: 0,
+              symptom_code: lastCtx.tried?.code ?? last.guide?.code,
+            },
+          });
+          toast('บันทึกการส่งซ่อมลงประวัติแล้ว');
+          e.target.querySelector('button').disabled = true;
+        } catch (err) {
+          toast(err.message, true);
+        }
+        return;
+      }
       if (e.target.id !== 'ai-save') return;
       e.preventDefault();
       try {
@@ -840,7 +1120,15 @@ const views = {
             <section class="card">
               <h2>${s.icon} ${esc(s.title)} <span class="badge ${SEVERITY[s.severity][1]}">${SEVERITY[s.severity][0]}</span></h2>
               <p class="sub">ทำตามขั้นตอนทีละข้อ ติ๊กเมื่อทำเสร็จ</p>
-              ${checklist(s.steps)}
+              <div id="diag-steps">${checklist(s.steps)}</div>
+              <p class="hint" id="diag-progress" style="margin:.75rem 0 0">ทำไปแล้ว 0/${s.steps.length} ข้อ</p>
+              <div class="diag-outcome" id="diag-outcome" hidden>
+                <strong>ทำครบทุกข้อแล้ว อาการเป็นอย่างไรบ้าง?</strong>
+                <div class="diag-outcome-actions">
+                  <button class="btn secondary small" data-outcome="fixed">✅ หายแล้ว</button>
+                  <button class="btn small" data-outcome="unresolved">😕 ยังแก้ไขไม่ได้</button>
+                </div>
+              </div>
             </section>
             <div class="stack">
               <section class="callout danger">
@@ -870,10 +1158,29 @@ const views = {
         ${body}`;
     };
 
+    view.onchange = (e) => {
+      if (!e.target.closest('#diag-steps')) return;
+      const boxes = [...view.querySelectorAll('#diag-steps input[type=checkbox]')];
+      const done = boxes.filter((b) => b.checked).length;
+      $('#diag-progress').textContent = `ทำไปแล้ว ${done}/${boxes.length} ข้อ`;
+      $('#diag-outcome').hidden = done < boxes.length;
+    };
+
     view.onclick = async (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
-      if (btn.dataset.type) {
+      if (btn.dataset.outcome === 'fixed') {
+        const note = $('#save-diagnosis textarea[name=note]');
+        if (note) {
+          note.value = 'ทำตามขั้นตอนครบทุกข้อ อาการหายแล้ว';
+          note.closest('section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        $('#diag-outcome').innerHTML = `<strong>ยอดเยี่ยม! 🎉</strong><span class="hint">${note ? 'บันทึกลงประวัติไว้ด้านข้างได้เลย จะได้ย้อนดูได้ภายหลัง' : 'ดูแลอุปกรณ์ต่อไปให้ใช้ได้นาน ๆ นะ'}</span>`;
+      } else if (btn.dataset.outcome === 'unresolved') {
+        const deviceId = $('#save-diagnosis select[name=device_id]')?.value;
+        aiHandoff = { type: state.type, device_id: deviceId ?? null, symptom: state.symptom };
+        location.hash = '#ai';
+      } else if (btn.dataset.type) {
         state.type = btn.dataset.type;
         state.symptoms = await api(`/symptoms?type=${state.type}`);
         draw();

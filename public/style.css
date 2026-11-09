@@ -340,7 +340,24 @@ label.check input { width: auto; margin: 0; flex: none; position: relative; top:
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 .badges { display: flex; gap: .4rem; flex-wrap: wrap; }
-.ai-feedback { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.diag-outcome { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; padding: 1rem; border-radius: var(--radius-sm); background: var(--bg, transparent); border: 1px dashed var(--border); }
+.diag-outcome[hidden] { display: none; }
+.diag-outcome-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.ai-photos { display: flex; flex-direction: column; gap: .35rem; }
+.ai-photos .label-text { font-weight: 600; }
+.photo-list { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .35rem; }
+.photo-thumb { position: relative; margin: 0; width: 96px; height: 96px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-remove { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: .8rem; cursor: pointer; line-height: 1; }
+.photo-add { width: 96px; height: 96px; border-radius: var(--radius-sm); border: 1.5px dashed var(--border); background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; font-size: 1.5rem; cursor: pointer; }
+.photo-add span { font-size: .85rem; }
+.photo-add:hover { border-color: currentColor; }
+.ai-escalate { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.ai-escalate h2 { margin-bottom: .25rem; }
+.repair-prep h3 { margin: 1.25rem 0 .5rem; }
+.repair-prep .grid h3 { margin-top: .5rem; }
+.repair-prep textarea { width: 100%; font-size: .9rem; line-height: 1.5; }
+ display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .ai-meta { margin: 1rem 0 0; }
 .ai-banner { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem 1.25rem; }
 .steps .sub { color: var(--muted); font-size: .9rem; }
